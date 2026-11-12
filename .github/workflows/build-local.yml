@@ -84,7 +84,7 @@ jobs:
           echo "APP=$APP" | tee -a build.log
           if [ -n "$APP" ]; then
             ls -lh "$APP/root.tar.gz" || echo "NO ROOTFS IN BUNDLE" | tee -a build.log
-            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName DSH Go" "$APP/Info.plist" || true
+            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string DSH Go" "$APP/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName DSH Go" "$APP/Info.plist" || true
             /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.dshgo.local" "$APP/Info.plist" || true
             rm -rf Payload && mkdir -p Payload && cp -R "$APP" Payload/
             /usr/bin/codesign --force --sign - Payload/*.app || true

@@ -14,4 +14,15 @@ s = s.replace(old, new)
 pbx.write_text(s)
 print(f"patched {n} build phase(s)")
 
+
+# 开机命令换成我们的启动脚本
+ad = root / "app" / "AppDelegate.m"
+t = ad.read_text()
+old_cmd = "command = UserPreferences.shared.bootCommand;"
+new_cmd = 'command = @[@"/bin/sh", @"/opt/boot.sh"];'
+if old_cmd in t:
+    t = t.replace(old_cmd, new_cmd)
+    ad.write_text(t)
+    print("boot command patched")
+
 print("done")
