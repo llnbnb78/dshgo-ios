@@ -2,7 +2,7 @@
 # 在 i386/alpine 容器里组装 rootfs：装 node24 + dsh，然后把自己打包。
 set -eu
 
-apk add --no-cache alpine-base nodejs npm bash curl ca-certificates tzdata tar
+apk add --no-cache alpine-base nodejs npm bash curl ca-certificates tzdata
 
 node -v
 npm -v
@@ -38,10 +38,10 @@ mkdir -p /tmp && chmod 1777 /tmp
 
 cd /
 set +e
-/usr/bin/tar --numeric-owner --owner=0 --group=0 -czf /w/root.tar.gz \
+tar --numeric-owner -czf /w/root.tar.gz \
   --exclude=./w --exclude=./proc --exclude=./sys --exclude=./dev -C / . 
 rc=$?
 echo "tar rc=$rc"
 ls -lh /w/root.tar.gz || true
-/usr/bin/tar tzf /w/root.tar.gz 2>/dev/null | head -5
+tar tzf /w/root.tar.gz 2>/dev/null | head -5
 exit $rc
