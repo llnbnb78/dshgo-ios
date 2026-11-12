@@ -25,4 +25,30 @@ if old_cmd in t:
     ad.write_text(t)
     print("boot command patched")
 
+
+# 把 WebView 控制器拷进 app/ 并改 SceneDelegate 的入口
+import shutil
+here = pathlib.Path(__file__).parent
+for f in ["DSHWebViewController.h", "DSHWebViewController.m"]:
+    shutil.copy(here / "patch" / f, root / "app" / f)
+
+sd = root / "app" / "SceneDelegate.m"
+t = sd.read_text()
+if "#import \"DSHWebViewController.h\"" not in t:
+    t = t.replace('#import "SceneDelegate.h"', '#import "SceneDelegate.h"\n#import "DSHWebViewController.h"', 1)
+wrap = """
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        static BOOL dshShown = NO;
+        if (dshShown || vc.view.window == nil) return;
+        dshShown = YES;
+        DSHWebViewController *web = [DSHWebViewController new];
+        web.modalPresentationStyle = UIModalPresentationFullScreen;
+        [vc presentViewController:web animated:NO completion:nil];
+    });
+"""
+if "DSHWebViewController *web" not in t:
+    t = t.replace("        [vc startNewSession];", "        [vc startNewSession];\n" + wrap, 1)
+sd.write_text(t)
+print("scene delegate patched")
+
 print("done")

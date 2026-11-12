@@ -57,12 +57,14 @@ jobs:
 
       - name: build tools
         run: |
-          brew install meson ninja llvm lld || pip3 install --break-system-packages meson ninja
-          /opt/homebrew/opt/llvm/bin/clang --version | head -2
+          brew install meson ninja llvm lld || true
+          gem install xcodeproj --no-document || sudo gem install xcodeproj --no-document
           meson --version && ninja --version
 
-      - name: patch rootfs source
-        run: python3 patch_ish.py ish
+      - name: patch sources
+        run: |
+          python3 patch_ish.py ish
+          cd ish && ruby ../add_webview.rb
 
       - name: build
         run: |
@@ -74,7 +76,7 @@ jobs:
             ROOTFS_SRC="$PWD/rootfs/root.tar.gz" \
             PRODUCT_BUNDLE_IDENTIFIER=com.dshgo.local \
             > build.log 2>&1 || true
-          tail -60 build.log
+          tail -40 build.log
           find build/Build/Products -maxdepth 2 -name "*.app" | head
 
       - name: package ipa
@@ -83,13 +85,29 @@ jobs:
           APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" 2>/dev/null | head -1)
           echo "APP=$APP" | tee -a build.log
           if [ -n "$APP" ]; then
-            ls -lh "$APP/root.tar.gz" || echo "NO ROOTFS IN BUNDLE" | tee -a build.log
-            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string DSH Go" "$APP/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName DSH Go" "$APP/Info.plist" || true
-            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.dshgo.local" "$APP/Info.plist" || true
-            rm -rf Payload && mkdir -p Payload && cp -R "$APP" Payload/
-            /usr/bin/codesign --force --sign - Payload/*.app || true
+            ls -lh "$APP/root.tar.gz" | tee -a build.log || echo "NO ROOTFS" | tee -a build.log
+
+            # 图标
+            cp patch/icons/*.png "$APP/" 2>/dev/null || true
+            PB="$APP/Info.plist"
+            /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons" "$PB" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Delete :CFBundleIcons~ipad" "$PB" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$PB" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :CFBundleIconFiles array" "$PB" 2>/dev/null || true
+            for i in Icon60 Icon76 Icon83.5 Icon1024; do
+              /usr/libexec/PlistBuddy -c "Add :CFBundleIconFiles: string $i" "$PB" 2>/dev/null || true
+            done
+            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string DSH Go" "$PB" 2>/dev/null || \
+              /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'DSH Go'" "$PB" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.dshgo.local" "$PB" || true
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PB" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PB" 2>/dev/null || true
+
+            rm -rf Payload && mkdir -p Payload
+            cp -R "$APP" "Payload/DSHGo.app"
+            /usr/bin/codesign --force --sign - "Payload/DSHGo.app" || true
             zip -qry DSHGo-iOS.ipa Payload
-            ls -lh DSHGo-iOS.ipa
+            ls -lh DSHGo-iOS.ipa | tee -a build.log
           fi
 
       - name: publish ipa and log
@@ -98,6 +116,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="local-$(date -u +%Y%m%d-%H%M%S)"
-          gh release create "$tag" --title "DSH Go iOS $tag" --notes "iSH 内核 + 内置 Alpine/Node24/dsh" --repo "$GITHUB_REPOSITORY" || true
+          gh release create "$tag" --title "DSH Go iOS $tag" --notes "iSH 内核 + 内置 Alpine/Node24/dsh + DSH Web 界面" --repo "$GITHUB_REPOSITORY" || true
           [ -f DSHGo-iOS.ipa ] && gh release upload "$tag" DSHGo-iOS.ipa --repo "$GITHUB_REPOSITORY" || true
           [ -f build.log ] && gh release upload "$tag" build.log --repo "$GITHUB_REPOSITORY" || true
