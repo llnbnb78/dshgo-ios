@@ -55,6 +55,11 @@ jobs:
           git clone --recursive --shallow-submodules --depth 1 https://github.com/ish-app/ish ish
           du -sh ish
 
+      - name: build tools
+        run: |
+          brew install meson ninja || pip3 install --break-system-packages meson ninja
+          meson --version && ninja --version
+
       - name: patch rootfs source
         run: python3 patch_ish.py ish
 
