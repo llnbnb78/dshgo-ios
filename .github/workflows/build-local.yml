@@ -11,20 +11,31 @@ permissions:
 jobs:
   rootfs:
     runs-on: ubuntu-latest
-    container: alpine:edge
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: deps
-        run: apk add --no-cache bash tar xz coreutils nodejs npm
-      - name: build rootfs
+
+      - name: build rootfs in 32-bit alpine
         run: |
-          mkdir -p /out
-          sh rootfs/build-rootfs.sh
+          set -x
+          docker run --rm -v "$PWD":/w -w /w i386/alpine:edge \
+            sh /w/rootfs/build-rootfs.sh 2>&1 | tee rootfs.log
+          ls -lh root.tar.gz rootfs.log
+
+      - name: publish log
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="rootfs-log-$(date -u +%Y%m%d-%H%M%S)"
+          gh release create "$tag" rootfs.log --title "$tag" --notes "rootfs 构建日志" --repo "$GITHUB_REPOSITORY" || true
+          if [ -f root.tar.gz ]; then gh release upload "$tag" root.tar.gz --repo "$GITHUB_REPOSITORY" || true; fi
+
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: dsh-rootfs
-          path: /out/root.tar.gz
+          path: root.tar.gz
           if-no-files-found: error
 
   app:
@@ -42,7 +53,7 @@ jobs:
       - name: clone iSH
         run: |
           git clone --recursive --shallow-submodules --depth 1 https://github.com/ish-app/ish ish
-          ls ish/deps
+          du -sh ish
 
       - name: patch rootfs source
         run: python3 patch_ish.py ish
@@ -50,42 +61,37 @@ jobs:
       - name: build
         run: |
           set -o pipefail
-          xcodebuild -project ish/iSH.xcodeproj \
-            -scheme iSH \
-            -configuration Release \
-            -sdk iphoneos \
-            -arch arm64 \
+          xcodebuild -project ish/iSH.xcodeproj -scheme iSH \
+            -configuration Release -sdk iphoneos -arch arm64 \
             -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             ROOTFS_SRC="$PWD/rootfs/root.tar.gz" \
             PRODUCT_BUNDLE_IDENTIFIER=com.dshgo.local \
-            | xcpretty || xcodebuild -project ish/iSH.xcodeproj -scheme iSH -configuration Release -sdk iphoneos -arch arm64 -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO ROOTFS_SRC="$PWD/rootfs/root.tar.gz" PRODUCT_BUNDLE_IDENTIFIER=com.dshgo.local
+            > build.log 2>&1 || true
+          tail -60 build.log
+          find build/Build/Products -maxdepth 2 -name "*.app" | head
 
       - name: package ipa
+        if: always()
         run: |
-          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
-          echo "APP=$APP"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName DSH Go" "$APP/Info.plist" || true
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.dshgo.local" "$APP/Info.plist" || true
-          ls -lh "$APP/root.tar.gz" || echo "NO ROOTFS IN BUNDLE"
-          mkdir -p Payload && cp -R "$APP" Payload/
-          /usr/bin/codesign --force --sign - Payload/*.app || true
-          zip -qry DSHGo-iOS.ipa Payload
-          ls -lh DSHGo-iOS.ipa
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" 2>/dev/null | head -1)
+          echo "APP=$APP" | tee -a build.log
+          if [ -n "$APP" ]; then
+            ls -lh "$APP/root.tar.gz" || echo "NO ROOTFS IN BUNDLE" | tee -a build.log
+            /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName DSH Go" "$APP/Info.plist" || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.dshgo.local" "$APP/Info.plist" || true
+            rm -rf Payload && mkdir -p Payload && cp -R "$APP" Payload/
+            /usr/bin/codesign --force --sign - Payload/*.app || true
+            zip -qry DSHGo-iOS.ipa Payload
+            ls -lh DSHGo-iOS.ipa
+          fi
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: DSHGo-iOS-ipa
-          path: DSHGo-iOS.ipa
-          if-no-files-found: error
-
-      - name: Publish release
+      - name: publish ipa and log
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -f DSHGo-iOS.ipa ]; then
-            tag="local-$(date -u +%Y%m%d-%H%M%S)"
-            gh release create "$tag" DSHGo-iOS.ipa --title "DSH Go iOS $tag" --notes "未签名 IPA：iSH 内核 + 内置 Alpine/Node24/dsh" --repo "$GITHUB_REPOSITORY" || true
-          fi
+          tag="local-$(date -u +%Y%m%d-%H%M%S)"
+          gh release create "$tag" --title "DSH Go iOS $tag" --notes "iSH 内核 + 内置 Alpine/Node24/dsh" --repo "$GITHUB_REPOSITORY" || true
+          [ -f DSHGo-iOS.ipa ] && gh release upload "$tag" DSHGo-iOS.ipa --repo "$GITHUB_REPOSITORY" || true
+          [ -f build.log ] && gh release upload "$tag" build.log --repo "$GITHUB_REPOSITORY" || true
