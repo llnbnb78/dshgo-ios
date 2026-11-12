@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -26,3 +29,14 @@ jobs:
           path: DSHGo-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="build-$(date -u +%Y%m%d-%H%M%S)"
+          gh release create "$tag" DSHGo-unsigned.ipa \
+            --title "DSH Go for iOS $tag" \
+            --notes "未签名 IPA，用 Sideloadly / ESign / 轻松签 自行签名。" \
+            --repo "$GITHUB_REPOSITORY"
+          echo "ASSET=https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/DSHGo-unsigned.ipa"
