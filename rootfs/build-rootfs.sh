@@ -12,8 +12,7 @@ cd /opt/dsh-app
 echo '{"name":"dsh-go","private":true}' > package.json
 
 npm config set registry https://registry.npmmirror.com
-npm i --ignore-engines --legacy-peer-deps --no-audit --no-fund \
-  @deepseek-ai/dsh@0.2.2-rc.1
+npm i --no-audit --no-fund @deepseek-ai/dsh@0.2.2-rc.1
 
 mkdir -p /usr/local/bin
 ln -sf /opt/dsh-app/node_modules/.bin/dsh /usr/local/bin/dsh
