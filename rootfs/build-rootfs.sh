@@ -37,6 +37,11 @@ rm -rf /root/.npm /var/cache/apk/* /tmp/* 2>/dev/null || true
 mkdir -p /tmp && chmod 1777 /tmp
 
 cd /
+set +e
 tar --numeric-owner --owner=0 --group=0 -czf /w/root.tar.gz \
-  --exclude=./w --exclude=./proc/* --exclude=./sys/* --exclude=./dev/* ./ 2>/dev/null
-ls -lh /w/root.tar.gz
+  --exclude=./w --exclude=./proc --exclude=./sys --exclude=./dev -C / . 
+rc=$?
+echo "tar rc=$rc"
+ls -lh /w/root.tar.gz || true
+tar tzf /w/root.tar.gz 2>/dev/null | head -5
+exit $rc
